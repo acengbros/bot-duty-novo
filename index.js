@@ -13,7 +13,7 @@ const client = new Client({
 // Masukkan Token Bot kamu di sini
 const TOKEN = process.env.TOKEN;
 const PREFIX = '!';
-const FILE_PATH = './database.json';
+const FILE_PATH = '/data/database.json';
 
 function loadData() {
     if (!fs.existsSync(FILE_PATH)) return {};
