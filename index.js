@@ -1,93 +1,44 @@
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
-const fs = require('fs');
+const axios = require('axios');
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// Masukkan Token Bot kamu di sini
-const TOKEN = process.env.TOKEN;
-const PREFIX = '!';
-const FILE_PATH = '/data/database.json';
-
-function loadData() {
-    if (!fs.existsSync(FILE_PATH)) return {};
-    try {
-        return JSON.parse(fs.readFileSync(FILE_PATH, 'utf8'));
-    } catch (e) { return {}; }
-}
-
-function saveData(data) {
-    fs.writeFileSync(FILE_PATH, JSON.stringify(data, null, 2));
-}
-
-let dataDuty = loadData();
-
-client.on('ready', () => {
-    console.log(`✅ Bot ${client.user.tag} Online!`);
-});
+// ISI DATA DI BAWAH INI:
+const URL_SCRIPT = process.env.URL_SCRIPT;
+const ID_CHANNEL_KHUSUS = process.env.ID_CHANNEL_KHUSUS;
+const LINK_SPREADSHEET = process.env.LINK_SPREADSHEET;
+const TOKEN_BOT = process.env.TOKEN_BOT;
 
 client.on('messageCreate', async (message) => {
-    if (!message.content.startsWith(PREFIX) || message.author.bot) return;
+    if (message.author.bot) return;
+    if (message.channel.id !== ID_CHANNEL_KHUSUS) return;
 
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
-    const userId = message.author.id;
+    const cmd = message.content.toLowerCase();
 
-    if (!dataDuty[userId]) {
-        dataDuty[userId] = { totalTime: 0, startTime: null, isOnDuty: false };
-    }
-
-    // --- COMMAND !ON ---
-    if (command === 'on') {
-        if (dataDuty[userId].isOnDuty) return message.reply('Status kamu sudah **On Duty**!');
-        dataDuty[userId].startTime = Date.now();
-        dataDuty[userId].isOnDuty = true;
-        saveData(dataDuty);
-        message.reply(`🟢 **On Duty dimulai.** Semangat bertugas, <@${userId}>!`);
-    }
-
-    // --- COMMAND !OFF ---
-    if (command === 'off') {
-        if (!dataDuty[userId].isOnDuty) return message.reply('Kamu belum mulai On Duty.');
-        const durasi = Date.now() - dataDuty[userId].startTime;
-        dataDuty[userId].totalTime += durasi;
-        dataDuty[userId].isOnDuty = false;
-        dataDuty[userId].startTime = null;
-        saveData(dataDuty);
-        const totalMenit = Math.floor(dataDuty[userId].totalTime / 60000);
-        message.reply(`🔴 **Off Duty.** Total waktu kamu: **${totalMenit} menit**.`);
-    }
-
-    // --- COMMAND !LIST ---
-    if (command === 'list') {
-        let laporan = "📋 **DAFTAR WAKTU TUGAS:**\n";
-        for (const [id, user] of Object.entries(dataDuty)) {
-            let total = user.totalTime;
-            if (user.isOnDuty) total += (Date.now() - user.startTime);
-            const menit = Math.floor(total / 60000);
-            const status = user.isOnDuty ? "🟢 Aktif" : "🔴 Off";
-            laporan += `<@${id}>: **${menit} menit** | ${status}\n`;
-        }
-        message.channel.send(laporan || "Belum ada data.");
-    }
-
-    // --- COMMAND !RESET (Khusus Admin) ---
-    if (command === 'reset') {
-        // Cek apakah pengirim pesan adalah Admin server
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ Kamu tidak punya izin (Administrator) untuk mereset data!');
-        }
-        
-        dataDuty = {}; // Hapus semua data di memori
-        saveData(dataDuty); // Simpan perubahan ke file database.json
-        message.reply('♻️ **Database Berhasil Direset.** Semua waktu kembali ke 0.');
+    if (cmd === '!on') {
+        await axios.post(URL_SCRIPT, { action: 'on', userId: message.author.id, username: message.author.username });
+        message.reply(`🛠️ **${message.author.username}** On Duty!`);
+    } 
+    else if (cmd === '!off') {
+        const res = await axios.post(URL_SCRIPT, { action: 'off', userId: message.author.id });
+        if (res.data === "BelumOn") return message.reply("Kamu belum !on sebelumnya!");
+        message.reply(`✅ **${message.author.username}** Off Duty. Total duty kali ini: **${res.data} menit**.`);
+    } 
+    else if (cmd === '!list') {
+        const res = await axios.post(URL_SCRIPT, { action: 'list' });
+        message.reply(`📋 **Data Duty Mekanik:**\n${res.data}`);
+    } 
+    else if (cmd === '!link') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+        message.reply(`🔗 **Link Spreadsheet:** ${LINK_SPREADSHEET}`);
+    } 
+    else if (cmd === '!reset') {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+        await axios.post(URL_SCRIPT, { action: 'reset' });
+        message.reply("🧹 Data waktu telah direset!");
     }
 });
 
-client.login(TOKEN);
+client.login(TOKEN_BOT);
